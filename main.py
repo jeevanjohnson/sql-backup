@@ -48,17 +48,18 @@ def magnitude_time_format(seconds: float) -> str:
     raise NotImplementedError("Time too large")
 
 
+
 async def main() -> int:
     start_time = time.perf_counter()
     backup_filename = f"backup_{datetime.now().isoformat()}.sql"
 
-    process = await asyncio.subprocess.create_subprocess_shell(
+    with open("backup.sql", "wb+") as backup_file:
+        process = await asyncio.subprocess.create_subprocess_shell(
         f"sudo mysqldump -u {DB_USER} -p{DB_PASS} {DB_NAME}",
-        stdout=asyncio.subprocess.PIPE,
+        stdout=backup_file,
         stderr=asyncio.subprocess.PIPE,
     )
-
-    stdout, stderr = await process.communicate()
+        stdout, stderr = await process.communicate()
 
     exit_code = process.returncode
     assert exit_code is not None
@@ -69,17 +70,18 @@ async def main() -> int:
 
     try:
         session = get_session()  # TODO: env vars?
-        async with session.create_client(
-            "s3",
-            endpoint_url=AWS_ENDPOINT_URL,
-            aws_access_key_id=AWS_ACCESS_KEY_ID,
-            aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
-        ) as s3_client:
-            await s3_client.put_object(
-                Bucket=AWS_BUCKET_NAME,
-                Key=backup_filename,
-                Body=stdout,
-            )
+        with open("backup.sql", "rb") as backup_file:
+            async with session.create_client(
+                "s3",
+                endpoint_url=AWS_ENDPOINT_URL,
+                aws_access_key_id=AWS_ACCESS_KEY_ID,
+                aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
+            ) as s3_client:
+                await s3_client.put_object(
+                    Bucket=AWS_BUCKET_NAME,
+                    Key=backup_filename,
+                    Body=backup_file,
+                )
     except Exception as e:
         logging.warning(f"{backup_filename} failed uploading to bucket")
         logging.error(e)
@@ -93,5 +95,8 @@ async def main() -> int:
 
 
 if __name__ == "__main__":
+    import atexit
+    atexit.register(os.remove, "backup.sql")
+
     exit_code = asyncio.run(main())
     raise SystemExit(exit_code)
