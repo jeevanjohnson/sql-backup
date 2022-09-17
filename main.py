@@ -32,6 +32,22 @@ assert AWS_BUCKET_NAME
 assert AWS_BUCKET_REGION
 
 
+def magnitude_format_size(size: float) -> str:
+    for unit in ["B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"]:
+        if size < 1024.0:
+            return f"{size:3.1f} {unit}"
+        size /= 1024.0
+    raise NotImplementedError("Size too large")
+
+
+def magnitude_time_format(seconds: float) -> str:
+    for unit in ["s", "m", "h"]:
+        if seconds < 60.0:
+            return f"{seconds:.2f}{unit}"
+        seconds /= 60.0
+    raise NotImplementedError("Time too large")
+
+
 async def main() -> int:
     start_time = time.perf_counter()
     backup_filename = f"backup_{datetime.now().isoformat()}.sql"
@@ -69,8 +85,9 @@ async def main() -> int:
         logging.error(e)
         return 1
 
-    time_elapsed = time.perf_counter() - start_time
-    logging.info(f"{backup_filename} was uploaded to bucket in {time_elapsed:.2f}s")
+    file_size = magnitude_format_size(len(stdout))
+    time_elapsed = magnitude_time_format(time.perf_counter() - start_time)
+    logging.info(f"{backup_filename} ({file_size}) uploaded in {time_elapsed}")
 
     return 0
 
