@@ -94,9 +94,14 @@ async def main() -> int:
     return 0
 
 
+def remove_if_exists(filename: str) -> None:
+    if os.path.exists(filename):
+        os.remove(filename)
+
+
 if __name__ == "__main__":
     import atexit
-    atexit.register(os.remove, "backup.sql")
+    atexit.register(remove_if_exists, "backup.sql")
 
     exit_code = asyncio.run(main())
     raise SystemExit(exit_code)
