@@ -8,6 +8,9 @@ from datetime import datetime
 from aiobotocore.session import get_session
 from dotenv import load_dotenv
 
+# set the working directory to the script's directory
+os.chdir(os.path.dirname(os.path.realpath(__file__)))
+
 load_dotenv(dotenv_path=".env")
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
