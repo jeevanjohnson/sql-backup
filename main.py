@@ -59,7 +59,7 @@ async def main() -> int:
         stdout=backup_file,
         stderr=asyncio.subprocess.PIPE,
     )
-        stdout, stderr = await process.communicate()
+        _, stderr = await process.communicate()
 
     exit_code = process.returncode
     assert exit_code is not None
@@ -87,7 +87,10 @@ async def main() -> int:
         logging.error(e)
         return 1
 
-    file_size = magnitude_format_size(len(stdout))
+    # get file stats for backup.sql
+    stat_result = os.stat("backup.sql")
+
+    file_size = magnitude_format_size(stat_result.st_size)
     time_elapsed = magnitude_time_format(time.perf_counter() - start_time)
     logging.info(f"{backup_filename} ({file_size}) uploaded in {time_elapsed}")
 
