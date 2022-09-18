@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import asyncio
+import atexit
 import logging
 import os
 import time
@@ -13,9 +14,7 @@ os.chdir(os.path.dirname(os.path.realpath(__file__)))
 
 load_dotenv(dotenv_path=".env")
 
-LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
-logging.basicConfig(level=LOG_LEVEL)
-
+LOG_LEVEL = os.getenv("LOG_LEVEL")
 DB_USER = os.getenv("DB_USER")
 DB_PASS = os.getenv("DB_PASS")
 DB_NAME = os.getenv("DB_NAME")
@@ -23,16 +22,17 @@ AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
 AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
 AWS_BUCKET_NAME = os.getenv("AWS_BUCKET_NAME")
 AWS_BUCKET_REGION = os.getenv("AWS_BUCKET_REGION")
+AWS_ENDPOINT_URL = os.getenv("AWS_ENDPOINT_URL")
 
-AWS_ENDPOINT_URL = f"https://s3.{AWS_BUCKET_REGION}.wasabisys.com"
-
-assert DB_USER
-assert DB_PASS
-assert DB_NAME
-assert AWS_ACCESS_KEY_ID
-assert AWS_SECRET_ACCESS_KEY
-assert AWS_BUCKET_NAME
-assert AWS_BUCKET_REGION
+assert LOG_LEVEL is not None
+assert DB_USER is not None
+assert DB_PASS is not None
+assert DB_NAME is not None
+assert AWS_ACCESS_KEY_ID is not None
+assert AWS_SECRET_ACCESS_KEY is not None
+assert AWS_BUCKET_NAME is not None
+assert AWS_BUCKET_REGION is not None
+assert AWS_ENDPOINT_URL is not None
 
 
 def magnitude_format_size(size: float) -> str:
@@ -51,12 +51,19 @@ def magnitude_time_format(seconds: float) -> str:
     raise NotImplementedError("Time too large")
 
 
+def remove_if_exists(filename: str) -> None:
+    if os.path.exists(filename):
+        os.remove(filename)
+
 
 async def main() -> int:
     start_time = time.perf_counter()
     backup_filename = f"backup_{datetime.now().isoformat()}.sql"
 
-    with open("backup.sql", "wb+") as backup_file:
+    # make sure the backup is removed from disk
+    atexit.register(remove_if_exists, backup_filename)
+
+    with open(backup_filename, "wb+") as backup_file:
         process = await asyncio.subprocess.create_subprocess_shell(
         f"sudo mysqldump -u {DB_USER} -p{DB_PASS} {DB_NAME}",
         stdout=backup_file,
@@ -73,9 +80,10 @@ async def main() -> int:
 
     try:
         session = get_session()  # TODO: env vars?
-        with open("backup.sql", "rb") as backup_file:
+        with open(backup_filename, "rb") as backup_file:
             async with session.create_client(
-                "s3",
+                service_name="s3",
+                region_name=AWS_BUCKET_REGION,
                 endpoint_url=AWS_ENDPOINT_URL,
                 aws_access_key_id=AWS_ACCESS_KEY_ID,
                 aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
@@ -86,12 +94,12 @@ async def main() -> int:
                     Body=backup_file,
                 )
     except Exception as e:
-        logging.warning(f"{backup_filename} failed uploading to bucket")
+        logging.error(f"{backup_filename} failed uploading to bucket")
         logging.error(e)
         return 1
 
-    # get file stats for backup.sql
-    stat_result = os.stat("backup.sql")
+    # get file stats for backup file on disk
+    stat_result = os.stat(backup_filename)
 
     file_size = magnitude_format_size(stat_result.st_size)
     time_elapsed = magnitude_time_format(time.perf_counter() - start_time)
@@ -101,8 +109,7 @@ async def main() -> int:
 
 
 if __name__ == "__main__":
-    import atexit
-    atexit.register(os.remove, "backup.sql")
+    logging.basicConfig(level=LOG_LEVEL)
 
     exit_code = asyncio.run(main())
     raise SystemExit(exit_code)
