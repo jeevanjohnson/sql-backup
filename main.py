@@ -79,7 +79,7 @@ async def main() -> int:
             ) as s3_client:
                 await s3_client.put_object(
                     Bucket=AWS_BUCKET_NAME,
-                    Key=backup_filename,
+                    Key=f"db-backups/{backup_filename}",
                     Body=backup_file,
                 )
     except Exception as e:
